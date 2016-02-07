@@ -8,7 +8,7 @@ var fs = require('fs');
 var mknod = require('mknod');
 var os = require('os');
 var path = require('path');
-var gdbParser = require('./gdb-out-parser.js');
+var gdbParser = require('gdb-mi-parser');
 
 
 
@@ -462,7 +462,7 @@ function nodeGdb(gdbArgs) {
     // -data-evaluate-expression -> Evaluate expr as an expression. The expression 
     // could contain an inferior function call. The function call will execute synchronously. 
     // If the expression contains spaces, it must be enclosed in double quotes.
-    enqueueCommand("123-data-evaluate-expression", [expr], callback);
+    enqueueCommand("-data-evaluate-expression", [expr], callback);
   };
   
   nodeGdb.prototype.setVariableValue = function(varName, varValue, callback) {
