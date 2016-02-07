@@ -289,9 +289,7 @@ function nodeGdb(gdbArgs) {
     // -exec-arguments -> Set the inferior program arguments, to be used in the next `-exec-run'.
     // If any args had been set before, they get wiped.
     enqueueCommand("-file-exec-and-symbols", [programName], function(data) {
-      enqueueCommand("-break-insert", ["main.cc:28"], function(data) {
-        enqueueCommand("-exec-arguments", programArgs, callback);
-      });
+      enqueueCommand("-exec-arguments", programArgs, callback);
     });
   };
   
@@ -613,7 +611,7 @@ function nodeGdb(gdbArgs) {
       return;
     }
     if (execStatus=='running') {
-      callback({ error: 'Program is running, cannot get info about selected frame' });
+      callback({ error: 'Program is running, cannot set selected frame' });
       return;
     }
     // -stack-select-frame -> Change the selected frame. Select a different frame framenum on the stack
