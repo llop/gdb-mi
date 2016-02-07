@@ -1,0 +1,22 @@
+{
+  "name": "gdb-mi",
+  "version": "1.0.0",
+  "description": "gdb mi interface",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "gdb-mi"
+  ],
+  "repository": { 
+    "type": "git", 
+    "url": "https://github.com/llop/gdb-mi.git"
+  },
+  "dependencies": {
+    "mknod": "1.1.0",
+    "gdb-mi-parser": "^1.0.0"
+  },
+  "author": "Albert Lobo <albertlobo1981@yahoo.es> (http://www.moleculardensity.net)",
+  "license": "MIT"
+}
