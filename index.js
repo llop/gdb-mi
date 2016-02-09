@@ -114,25 +114,21 @@ function nodeGdb(gdbArgs) {
   //  - gdb has signaled it's ready for input
   var fifoCnt = 0;
   var gdbReady = false;
-  var readyEmitted = false;
-  var readyCalledOnce = false;
-  var readyFunc = undefined;
+  var readyFuncs = [];
   
   function readyCheck() {
-    if (!readyEmitted && readyFunc && gdbReady && fifoCnt==3) {
-      readyEmitted = true;
-      readyFunc();
-      readyFunc = undefined;
+    if (readyFuncs.length>0 && gdbReady && fifoCnt==3) {
+      while (readyFuncs.length>0) {
+        var readyFunc = readyFuncs.shift();
+        readyFunc();
+      }
     }
   }
   
   // sets a callback that gets invoked once after the class is ready to be used
   nodeGdb.prototype.ready = function(callback) {
-    if (!readyCalledOnce) {
-      readyCalledOnce = true;
-      readyFunc = callback;
-      readyCheck();
-    }
+    readyFuncs.push(callback);
+    readyCheck();
   };
   
   
