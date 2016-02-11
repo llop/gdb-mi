@@ -3,13 +3,12 @@
 //-----------------------------------------------------------
 
 var spawn = require('child_process').spawn;
+var exec = require('child_process').exec;
 var events = require('events');
-var fs = require('fs');
-var mknod = require('mknod');
 var os = require('os');
 var path = require('path');
 var gdbParser = require('gdb-mi-parser');
-
+var pty = require('pty.js');
 
 
 //function stringStartsWith(str, prefix) {
@@ -75,7 +74,7 @@ function back(arr) {
 // 
 //-----------------------------------------------------------
 
-function nodeGdb(gdbArgs) {
+function nodeGdb() {
   
   //----------------------------------------------------------------------------------
   //
@@ -112,24 +111,24 @@ function nodeGdb(gdbArgs) {
   // we'll emit the ready event when we have:
   //  - created the 3 FIFOs for the debugee's IO
   //  - gdb has signaled it's ready for input
-  var fifoCnt = 0;
-  var gdbReady = false;
-  var readyFuncs = [];
+  //var fifoCnt = 0;
+  //var gdbReady = false;
+  //var readyFuncs = [];
   
-  function readyCheck() {
-    if (readyFuncs.length>0 && gdbReady && fifoCnt==3) {
-      while (readyFuncs.length>0) {
-        var readyFunc = readyFuncs.shift();
-        readyFunc();
-      }
-    }
-  }
+  //function readyCheck() {
+  //  if (readyFuncs.length>0 && gdbReady && fifoCnt==3) {
+  //    while (readyFuncs.length>0) {
+  //      var readyFunc = readyFuncs.shift();
+  //      readyFunc();
+  //    }
+  //  }
+  //}
   
   // sets a callback that gets invoked once after the class is ready to be used
-  nodeGdb.prototype.ready = function(callback) {
-    readyFuncs.push(callback);
-    readyCheck();
-  };
+  //nodeGdb.prototype.ready = function(callback) {
+  //  readyFuncs.push(callback);
+  //  readyCheck();
+  //};
   
   
   //-----------------------------------------------------------
@@ -146,7 +145,7 @@ function nodeGdb(gdbArgs) {
       gdbInteractiveCallback = callback;
       var cmd = name + ' ' + args.join(' ') + '\n';
       //console.log("CMD: "+cmd);
-      gdbIn.write(cmd);
+      me.gdbStdin.write(cmd);
     };
     if (interactive) commandFunc();
     else commadQueue.push(commandFunc);
@@ -193,7 +192,7 @@ function nodeGdb(gdbArgs) {
   // some things need special handling, such as process PIDs, and status updates
   // based on output type
   function processAsyncOutput(result) {
-    // handle state changes if prefix is line was exec-async-output ('stopped' or 'running')
+    // handle state changes if line was exec-async-output ('stopped' or 'running')
     if (result.outputType=='exec') execStatus = result.class;
     // log
     execOutRecords.push(result);
@@ -201,8 +200,8 @@ function nodeGdb(gdbArgs) {
   
   function enteredInteractiveMode() {
     interactive = true;
-    gdbReady = true;
-    readyCheck();
+    //gdbReady = true;
+    //readyCheck();
   }
   
   // parse a line of gdb output. the content of that line determines what we do:
@@ -234,6 +233,12 @@ function nodeGdb(gdbArgs) {
     }
   };
   
+  function resetStatusVars() {
+    interactive = false;
+    gdbInteractiveCallback = undefined;
+    debugStatus = 'active';
+    execStatus = 'stopped';
+  }
   
   
   //-------------------------------------------------------------------------
@@ -243,14 +248,14 @@ function nodeGdb(gdbArgs) {
   //-------------------------------------------------------------------------
   
   // write right into program input stream
-  nodeGdb.prototype.appInWrite = function(str) {
-    appIn.write(str);
-  };
+  //nodeGdb.prototype.appInWrite = function(str) {
+  //  appIn.write(str);
+  //};
   
   // pipe a readble into program input stream
-  nodeGdb.prototype.pipeToAppIn = function(readable) {
-    readable.pipe(appIn);
-  };
+  //nodeGdb.prototype.pipeToAppIn = function(readable) {
+  //  readable.pipe(appIn);
+  //};
   
   
   //-------------------------------------------------------------------------
@@ -260,67 +265,200 @@ function nodeGdb(gdbArgs) {
   //-------------------------------------------------------------------------
   
   // callback( data )
-  nodeGdb.prototype.load = function(programName, programArgs, callback) {
-    // do not mess around with this while debugging another program!
-    if (debugStatus=='active') {
-      callback({ error: 'Cannot load another program while debugging' });
-      return;
-    }
-    
+  //nodeGdb.prototype.load = function(programName, programArgs, callback) {
+  //  // do not mess around with this while debugging another program!
+  //  if (debugStatus=='active') {
+  //    callback({ error: 'Cannot load another program while debugging' });
+  //    return;
+  //  }
+  //  
     // sanitize vars
-    programName = programName || "";
-    programArgs = programArgs || [];
-    
-    // add IO redirection to program args
-    // if there's IO redirection lurking in there, it will have no effect
-    var ioArgs = [ '<', appInFileName, '>', appOutFileName, '2>', appErrFileName ];
-    programArgs = programArgs.concat(ioArgs);
-    
-    // -file-exec-and-symbols -> Specify the executable file to be debugged. 
-    // This file is the one from which the symbol table is also read. If no file is specified, 
-    // the command clears the executable and symbol information. If breakpoints are set 
-    // when using this command with no arguments, gdb will produce error messages. 
-    // Otherwise, no output is produced, except a completion notification.
-    // 
-    // -exec-arguments -> Set the inferior program arguments, to be used in the next `-exec-run'.
-    // If any args had been set before, they get wiped.
-    enqueueCommand("-file-exec-and-symbols", [programName], function(data) {
-      enqueueCommand("-exec-arguments", programArgs, callback);
-    });
-  };
+  //  programName = programName || "";
+  //  programArgs = programArgs || [];
+  //  
+  //  // add IO redirection to program args
+  //  // if there's IO redirection lurking in there, it will have no effect
+  //  var ioArgs = [ '<', appInFileName, '>', appOutFileName, '2>', appErrFileName ];
+  //  programArgs = programArgs.concat(ioArgs);
+  //  
+  //  // -file-exec-and-symbols -> Specify the executable file to be debugged. 
+  //  // This file is the one from which the symbol table is also read. If no file is specified, 
+  //  // the command clears the executable and symbol information. If breakpoints are set 
+  //  // when using this command with no arguments, gdb will produce error messages. 
+  //  // Otherwise, no output is produced, except a completion notification.
+  //  // 
+  //  // -exec-arguments -> Set the inferior program arguments, to be used in the next `-exec-run'.
+  //  // If any args had been set before, they get wiped.
+  //  enqueueCommand("-file-exec-and-symbols", [programName], function(data) {
+  //    enqueueCommand("-exec-arguments", programArgs, callback);
+  //  });
+  //};
   
   // start the debug
-  nodeGdb.prototype.run = function(args, callback) {
+  nodeGdb.prototype.run = function(programName, programArgs, callback) {
     // debug one program at a time!
     if (debugStatus=='active') {
       callback({ error: 'Already debugging a program' });
       return;
     }
+    //debugStatus = 'active';
+    
+    
+    // asserts
+    console.log("assert interactive is false "+(interactive==false));
+    console.log("assert gdbInteractiveCallback is undefined "+(gdbInteractiveCallback==undefined));
+    console.log("assert debugStatus is idle "+(debugStatus=='idle'));
+    console.log("assert execStatus is stopped "+(execStatus=='stopped'));
+    
+    interactive = false;
+    gdbInteractiveCallback = callback;
     debugStatus = 'active';
+    execStatus = 'stopped';
+    
+    
+    //--------------------------------------------------------------------------
+    //
+    // GDBSERVER
+    // 
+    // Will communicate with GDB via TCP port 1234 (something random and unused)
+    // 
+    // For TCP connections, you must start up gdbserver prior to using the target remote command
+    // More stuff at:
+    // https://sourceware.org/gdb/onlinedocs/gdb/Server.html
+    //
+    //--------------------------------------------------------------------------
+    
+    var gdbServerArgs = ["port:1234", programName];
+    me.gdbServer = pty.spawn("gdbserver", gdbServerArgs, {
+      name: 'xterm-color',
+      cols: 80,
+      rows: 30,
+      cwd: process.env.HOME,
+      env: process.env
+    });
+    // //spawn("gdbserver", gdbServerArgs, { detached: true });
+    // using spawn, gdbserver emits the following upon regular debugee execution finish:
+    //   gdbserver exit 0 null
+    //   gdbserver close  0 null
+    // whereas pty just emits
+    //   gdbserver close  undefined undefined
+    //   gdbserver exit 0 0
+    me.gdbServer.on("close", function(code, signal) {
+      console.log("gdbserver close  "+code+' '+signal);
+      resetStatusVars();
+      //me.emit("close", code, signal);
+    });
+    me.gdbServer.on("exit", function(code, signal) {
+      console.log("gdbserver exit "+code+' '+signal);
+      //me.emit("exit", code, signal);
+    });
+    me.gdbServer.on("error", function(err) {
+      console.log("gdbserver error "+err);
+      //me.emit("error", err);
+    });
+    me.gdbServer.on("disconnect", function(err) {
+      console.log("gdbserver disconnect "+err);
+      //me.emit("disconnect", err);
+    });
+    me.gdbServer.on("message", function(message, sendHandle) {
+      console.log("gdbserver message "+message+' '+sendHandle);
+      //me.emit("message", message, sendHandle);
+    });
+    
+    //--------------------------------------------------------------------------
+    //
+    // GDB
+    // 
+    // Add the following to your ~/.gdbinit file
+    //  target remote 127.0.0.1:1234
+    //
+    //--------------------------------------------------------------------------
+    // gdb args
+    // Use MI interpreter, fully read symbol files on first access, everything after program name is program args
+    var gdbArgs = ["--interpreter=mi", "--readnow", "--args", programName].concat(programArgs);
+
+    // spawn gdb process and wire process events
+    me.gdb = spawn("gdb", gdbArgs, { detached: true });
+    me.gdb.on("close", function(code, signal) {
+      console.log("gdb close  "+code+' '+signal);
+      //me.emit("close", code, signal);
+    });
+    me.gdb.on("exit", function(code, signal) {
+      console.log("gdb exit "+code+' '+signal);
+      //me.emit("exit", code, signal);
+    });
+    me.gdb.on("error", function(err) {
+      console.log("gdb error "+err);
+      //me.emit("error", err);
+    });
+    me.gdb.on("disconnect", function(err) {
+      console.log("gdb disconnect "+err);
+      //me.emit("disconnect", err);
+    });
+    me.gdb.on("message", function(message, sendHandle) {
+      console.log("gdb message "+message+' '+sendHandle);
+      //me.emit("message", message, sendHandle);
+    });
+    
+    
+    me.appStdin = me.gdbServer.stdin;     // those are actually references to gdbServer itself! XD
+    me.appStdout = me.gdbServer.stdout;
+    me.appStderr = undefined;             // pty provides no stderr; actually, it throws a nice exception if you try to acess it!
+    me.appStdio = [me.appStdin, me.appStdout, me.appStderr];
+    
+    me.gdbStdin = me.gdb.stdin;
+    me.gdbStdout = me.gdb.stdout;
+    me.gdbStderr = me.gdb.stderr;
+    me.gdbStdio = me.gdb.stdio;
+    
+    
+    me.appStdout.on("data", function(data) {
+      me.emit("appOut", data);
+    });
+    //REMOVED: pty provides no err stream (it just mixes them together, just like a regular console does)
+    //me.appStderr.on("data", function(data) {
+    //  me.emit("appErr", data);
+    //});
+    
+    
+    me.gdbStdout.on("data", function(data) {
+      processGdbMiOutput(data);
+      me.emit("gdbOut", data);
+    });
+    me.gdbStderr.on("data", function(data) {
+      processGdbMiOutput(data);
+      me.emit("gdbErr", data);
+    });
     
     // will stream user input into program input channel
     // we need to open these every time we start a debug, cos the previous one closed our streams
-    appIn = fs.createWriteStream(appInFileName, {encoding: 'utf8'});
-    appOut = fs.createReadStream(appOutFileName, {encoding: 'utf8'});
-    appErr = fs.createReadStream(appErrFileName, {encoding: 'utf8'});
+    //appIn = fs.createWriteStream(appInFileName, {encoding: 'utf8'});
+    //appOut = fs.createReadStream(appOutFileName, {encoding: 'utf8'});
+    //appErr = fs.createReadStream(appErrFileName, {encoding: 'utf8'});
     
     // debugee IO
-    me.appStdin = appIn;
-    me.appStdout = appOut;
-    me.appStderr = appErr;
-    me.appStdio = [appIn,appOut,appErr];
+    //me.appStdin = appIn;
+    //me.appStdout = appOut;
+    //me.appStderr = appErr;
+    //me.appStdio = [appIn,appOut,appErr];
     
     // wire program out events
-    appOut.on("data", function(data) {
-      me.emit("appOut", data);
-    });
-    appErr.on("data", function(data) {
-      me.emit("appErr", data);
-    });
+    //appOut.on("data", function(data) {
+    //  me.emit("appOut", data);
+    //});
+    //appErr.on("data", function(data) {
+    //  me.emit("appErr", data);
+    //});
     
     // -exec-run -> Asynchronous command. Starts execution of the inferior from the beginning. 
     // The inferior executes until either a breakpoint is encountered or the program exits.
-    enqueueCommand("-exec-run", args, callback);
+    //enqueueCommand("-exec-run", args, callback);
+  };
+  
+  nodeGdb.prototype.destroy = function() {
+    // kill 'em all!
+    exec("kill -9 " + me.gdbServer.pid);
+    exec("kill -9 " + me.gdb.pid);
   };
   
   nodeGdb.prototype.continue = function(args, callback) {
@@ -373,15 +511,18 @@ function nodeGdb(gdbArgs) {
       return;
     }
     
+    // kill gdbserver and kill gdb (kill -9 PID)
+    exec("kill -s 2 " + me.gdb);
+    
     // really kill the debugee
     // if program is running, we need to interrupt it first so gdb goes back to interactive
-    if (execStatus=='running') {
-      me.pause(function(data) {
-        enqueueCommand("kill", [], callback);
-      });
-    } else {
-      enqueueCommand("kill", [], callback);
-    }
+    //if (execStatus=='running') {
+    //  me.pause(function(data) {
+    //    enqueueCommand("kill", [], callback);
+    //  });
+    //} else {
+    //  enqueueCommand("kill", [], callback);
+    //}
   };
   
   //-------------------------------------------------------------------------
@@ -641,43 +782,10 @@ function nodeGdb(gdbArgs) {
   Object.setPrototypeOf(nodeGdb.prototype, events.EventEmitter.prototype);    // use this instead
   
   
-  //-----------------------------------------------------------
-  // set up program IO
-  //-----------------------------------------------------------
   
-  // fifo files
-  var fifoPath = randTempFilePath();
-  var appInFileName = fifoPath + ".in";
-  var appOutFileName = fifoPath + ".out";
-  var appErrFileName = fifoPath + ".err";
-  
-  // fifos cleanup
-  var fifosClosed = false;
-  function closeFifos() {
-    if (!fifosClosed) {
-      fifosClosed = true;
-      // delete debugee IO FIFOs
-      fs.unlink(appInFileName);
-      fs.unlink(appOutFileName);
-      fs.unlink(appErrFileName);
-    }
-  }
-  
-  // Create a fifo with read/write permissions for owner, and with read permissions for group and others
-  // Mode: 4516 (S_IFIFO | S_IWUSR | S_IRUSR | S_IRGRP | S_IROTH)
-  // Device: 0 (dev_t)
-  function mknodHandler(err) {
-    if (err) throw err;
-    ++fifoCnt;
-    readyCheck();
-  }
-  mknod(appInFileName, 4516, 0, mknodHandler);
-  mknod(appOutFileName, 4516, 0, mknodHandler);
-  mknod(appErrFileName, 4516, 0, mknodHandler);
-  
-  var appIn;    // IO streams we'll use to comunicate with the debugee
-  var appOut;
-  var appErr;
+  //var appIn;    // IO streams we'll use to comunicate with the debugee
+  //var appOut;
+  //var appErr;
     
   
   //-----------------------------------------------------------
@@ -711,87 +819,33 @@ function nodeGdb(gdbArgs) {
   //   appStderr
   //   appStdio
   //-----------------------------------------------------------
-  // prep GDB args
-  gdbArgs = gdbArgs || [];
-  // Hardcoded args
-  gdbArgs = gdbArgs.concat("--interpreter=mi");   // Use MI interpreter
-  //gdbArgs = gdbArgs.concat("--readnow");          // Fully read symbol files on first access.
-  //gdbArgs = gdbArgs.concat("-tty=/dev/pts/5");    // set terminal
-  //gdbArgs = gdbArgs.concat("--args");             // DO NOT USE!!! Program arguments should go in the 'programArgs' array
-
-  // spawn gdb process and wire process events
-  var gdb = spawn("gdb", gdbArgs, { detached: true });
   
-  // wire ChildProcess-like event handlers
-  gdb.on("close", function(code, signal) {
-    me.emit("close", code, signal);
-  });
-  gdb.on("exit", function(code, signal) {
-    closeFifos();
-    me.emit("exit", code, signal);
-  });
-  gdb.on("error", function(err) {
-    closeFifos();
-    me.emit("error", err);
-  });
-  gdb.on("disconnect", function(err) {
-    me.emit("disconnect", err);
-  });
-  gdb.on("message", function(message, sendHandle) {
-    me.emit("message", message, sendHandle);
-  });
   
   
   // make ChildProcess-like methods
-  nodeGdb.prototype.disconnect = function() {
-    return gdb.disconnect();
-  };
-  nodeGdb.prototype.kill = function(signal) {
-    return gdb.kill(signal);
-  };
-  nodeGdb.prototype.send = function(message, sendHandle, callback) {
-    return gdb.send(message, sendHandle, callback);
-  };
+  //nodeGdb.prototype.disconnect = function() {
+  //  return gdb.disconnect();
+  //};
+  //nodeGdb.prototype.kill = function(signal) {
+  //  return gdb.kill(signal);
+  //};
+  //nodeGdb.prototype.send = function(message, sendHandle, callback) {
+  //  return gdb.send(message, sendHandle, callback);
+  //};
   // make ChildProcess-like properties
-  me.pid = gdb.pid;
-  me.connected = gdb.connected;
+  //me.pid = gdb.pid;
+  //me.connected = gdb.connected;
   
   // general IO
-  me.stdio = gdb.stdio;
-  me.stdin = gdb.stdin;
-  me.stdout = gdb.stdout;
-  me.stderr = gdb.stderr;
+  //me.stdio = gdb.stdio;
+  //me.stdin = gdb.stdin;
+  //me.stdout = gdb.stdout;
+  //me.stderr = gdb.stderr;
   
   
-  // gdb IO
-  me.gdbStdio = gdb.stdio;
-  me.gdbStdin = gdb.stdin;
-  me.gdbStdout = gdb.stdout;
-  me.gdbStderr = gdb.stderr;
-  
-  // debugee IO
-  me.appStdin = undefined;
-  me.appStdout = undefined;
-  me.appStderr = undefined;
-  me.appStdio = [undefined,undefined,undefined];
-  
-  
-  // gdb IO
-  var gdbIn = gdb.stdin;    // all these are sockets
-  var gdbOut = gdb.stdout;
-  var gdbErr = gdb.stderr;
-  
-  // wire gdb out events
-  gdbOut.on("data", function(data) {
-    processGdbMiOutput(data);
-    me.emit("gdbOut", data);
-  });
-  gdbErr.on("data", function(data) {
-    processGdbMiOutput(data);
-    me.emit("gdbErr", data);
-  });
   
 }
 
 
 module.exports = nodeGdb;
+
