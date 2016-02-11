@@ -840,7 +840,7 @@ function nodeGdb() {
   //me.stdio = gdb.stdio;
   //me.stdin = gdb.stdin;
   //me.stdout = gdb.stdout;
-  //me.stderr = gdb.stderr; 
+  //me.stderr = gdb.stderr;
   
   
   
